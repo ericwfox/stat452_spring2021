@@ -1,0 +1,81 @@
+---
+title: "Lecture 7: Supplementary Simulation Code"
+author: "Eric Fox"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+```
+
+```{r}
+# simulate data from 3rd-degree polynomial model
+set.seed(123)
+x <- runif(200, 0, 6)
+eps <- rnorm(200, sd = 3)
+y <- x * (x-3) * (x-5) + 6 + eps
+```
+
+```{r}
+df <- data.frame(x, y)
+df_train <- df[1:100, ]
+df_test <- df[101:200, ]
+```
+
+```{r}
+ggplot(df_train, aes(x, y)) + geom_point()
+```
+
+```{r}
+ggplot(df_train, aes(x, y)) + geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  ggtitle("Model 1")
+```
+
+```{r}
+ggplot(df, aes(x, y)) + geom_point() +
+  geom_smooth(method = "loess", span = 0.6, se = FALSE) +
+  ggtitle("Model 2")
+```
+
+```{r}
+ggplot(df, aes(x, y)) + geom_point() +
+  geom_smooth(method = "loess", span = 0.05, se = FALSE) +
+  ggtitle("Model 3")
+```
+
+```{r}
+# fit models on training set
+mod1 <- lm(y ~ x, data = df_train)
+mod2 <- loess(y ~ x, span = 0.6, data = df_train)
+mod3 <- loess(y ~ x, span = 0.05, data = df_train)
+```
+
+```{r}
+# function to compute RMSE
+MSE <- function(y, y_hat) {
+  mean((y - y_hat)^2)
+}
+```
+
+```{r}
+# make predictions on test set
+pred1 <- predict(mod1, newdata = df_test)
+pred2 <- predict(mod2, newdata = df_test)
+pred3 <- predict(mod3, newdata = df_test)
+```
+
+```{r}
+# test set MSE
+MSE(df_test$y, pred1)
+MSE(df_test$y, pred2)
+MSE(df_test$y, pred3)
+```
+
+```{r}
+# training set MSE
+MSE(df_train$y, predict(mod1))
+MSE(df_train$y, predict(mod2))
+MSE(df_train$y, predict(mod3))
+```
+

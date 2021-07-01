@@ -1,0 +1,97 @@
+---
+title: "Lecture 14: Regression Trees"
+author: "STAT 452, Spring 2021"
+output: html_document
+---
+
+Here we go over how to fit a regression tree using the R package `rpart`.  For this demonstration we will use the Ames housing data set.
+
+### Load Packages and Prepare Data
+
+```{r, message = F}
+library(tidyverse)
+library(rpart)
+library(AmesHousing)
+ames <- make_ames()
+# add new column which is Sale_Price in thousands of dollars
+ames <- ames %>% mutate(Sale_Price2 = Sale_Price / 1000)
+```
+
+### Fit Tree Model
+
+We can fit a regression tree using the `rpart()` function.  The first argument is a formula that specifies the model.  The argument `method = anova` specifies that this is a regression tree model.
+
+```{r}
+t1 <- rpart(Sale_Price2 ~ Gr_Liv_Area + Year_Built, 
+            data = ames,
+            method = "anova")
+```
+
+### Plot Tree Model
+
+Next we can use the `plot()` function to plot the fitted regression tree, and the `text()` function to add the labels on the nodes.  The `par()` function specifies some graphical parameters (`cex` controls the magnification of the labels, and we set `xpd=NA` so the text is not clipped).  When `use.n = TRUE`, the number of observations that fall in each terminal node is displayed.
+
+```{r}
+par(cex=0.7, xpd=NA)
+plot(t1)
+text(t1, use.n = TRUE)
+```
+
+Behind the scenes the `rpart()` is using a pruning algorithm to select an optimal tree.  That is, a large tree is fit, and then pruned back to prevent overfitting.
+
+Set `uniform = TRUE` for uniform spacing of the nodes; this may be less cluttered when fitting a large tree.  The default is to use a non-uniform spacing proportional to the error in the fit.
+
+```{r}
+par(cex=0.7, xpd=NA)
+plot(t1, uniform = TRUE)
+text(t1, use.n = T)
+```
+
+
+### Make Predictions
+
+We can use the `predict()` function to make predictions from the tree model:
+
+```{r}
+new_x <-  data.frame(Gr_Liv_Area = 1500, Year_Built = 2000)
+predict(t1, newdata = new_x)
+```
+
+You should also be able to see that this is the correct prediction by looking at the tree.
+
+
+### Maximum Depth
+
+To visualize a smaller tree we can specify `maxdepth`, which sets the maximum depth of any node of the final tree, with the root node counted as depth 0.  For example, here's what happens when we set `maxdepth = 2`: 
+
+
+```{r}
+t2 <- rpart(Sale_Price2 ~ Gr_Liv_Area + Year_Built, 
+            data = ames,
+            method = "anova",
+            maxdepth = 3)
+```
+
+
+```{r}
+par(cex=0.7, xpd=NA)
+plot(t2, uniform = TRUE)
+text(t2, use.n = T)
+```
+
+
+### Your Turn
+
+Fit and plot a regression tree for `Sale_Price2` (sale price in thousands of dollars) using the following three predictors: `Year_Built`, `TotRms_AbvGrd`, and `Garage_Cars`.  Note that `Garage_Cars` is size of garage in car capacity.
+
+### Help Menu
+
+To learn more about the `rpart` package use the help menu:
+
+```{r, eval = F}
+help(rpart)
+help(plot.rpart)
+help(text.rpart)
+```
+
+

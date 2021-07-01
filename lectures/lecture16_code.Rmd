@@ -1,0 +1,125 @@
+---
+title: 'Lecture 16: Random Forests'
+author: "STAT 452, Spring 2021"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+Here we go over how to fit a random forest model using the `randomForest` package.  We will use the `Hitters` data from the `ISLR` package.  The response variable `Salary` is numeric, so this is a regression task.  An example of using random forests for classification will be given in a future lecture.
+
+```{r, message = FALSE}
+library(tidyverse)
+library(ISLR) # load Hitters data
+library(randomForest)
+library(vip) # for plotting variable importance
+```
+
+```{r}
+Hitters2 <- na.omit(Hitters) # remove missing data
+dim(Hitters2) # check dimension
+```
+
+The code below fits a random forest model for `Salary` using all the other variables in the data set as predictors. 
+```{r}
+set.seed(999) # make results reproducible
+rf1 <- randomForest(Salary ~ ., data = Hitters2, importance = TRUE)
+rf1
+```
+The RMSE on the OOB data is $\sqrt{76648.46} = 276.85$, and the $R^2$ on the OOB data is 62\%.
+
+This plot below show the MSE as the the number of trees in the model increases.  We see that the MSE stabilizes by about 100 trees.  
+```{r}
+plot(c(1: 500), rf1$mse, xlab="ntree", ylab="MSE", type="l")
+```
+
+Below is a variable importance plot which gives a ranking of the predictors in the model from most important (CHits) to least important (Assists).  The variable importance measure here is based on the increase in MSE when permuting each variable in the OOB data.
+```{r}
+vip(rf1, num_features = 20, geom = "point", include_type = TRUE)
+```
+
+## Tuning
+
+By default the `randomForest()` function used `mtry = p/3 = 19/3 \approx 6` and `ntree = 500`.  We can manually specify different values for these tuning parameters.  For example, below we use `mtry = 10` and `ntree = 1000`.  Although, the performance of the model does improve when making this adjustment  
+
+```{r}
+set.seed(999)
+rf2 <- randomForest(Salary ~ ., mtry = 10, ntree = 1000, data = Hitters2)
+rf2
+```
+
+
+## Cross-Validation
+
+Here we use cross-validation (hold-out method) to compare the performance of random forests to a multiple linear regression model.  
+
+```{r}
+# split data into 70% training and 30% test set
+set.seed(123)
+n <- nrow(Hitters2)
+train_index <- sample(1:n, round(0.7*n))
+Hitters_train <- Hitters2[train_index, ]
+Hitters_test <- Hitters2[-train_index, ]
+```
+
+```{r}
+# fit models on training set
+rf1 <- randomForest(Salary ~ ., data = Hitters_train)
+lm1 <- lm(Salary ~ ., data = Hitters_train)
+lm2 <- step(lm1, trace = F) # variable selection
+```
+
+```{r}
+# make predictions on test set and compute RMSE
+pred_rf1 <- predict(rf1, newdata = Hitters_test)
+pred_lm1 <- predict(lm1, newdata = Hitters_test)
+pred_lm2 <- predict(lm2, newdata = Hitters_test)
+```
+
+```{r}
+RMSE <- function(y, y_hat) {
+  sqrt(mean((y - y_hat)^2))
+}
+```
+
+```{r}
+RMSE(Hitters_test$Salary, pred_rf1)
+```
+```{r}
+RMSE(Hitters_test$Salary, pred_lm1)
+```
+```{r}
+RMSE(Hitters_test$Salary, pred_lm2)
+```
+
+In terms of RMSE, the RF model performed substantially better than multiple linear regression.
+
+Below are some plots of the predicted versus actual values on the test set, with the 1-1 line superimposed.  The RF predictions are closer to the 1-1 line than the MLR predictions.
+
+```{r}
+pred_df <- data.frame(
+  Actual = Hitters_test$Salary, 
+  Pred_RF = pred_rf1,
+  Pred_LM = pred_lm2
+) 
+```
+
+```{r}
+ggplot(pred_df, aes(x = Actual, y = Pred_RF)) +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 1) +
+  xlab("Actual Salary") + ylab("Predicted Salary") +
+  ggtitle("Random Forests") +
+  xlim(0,2000) + ylim(0,2000)
+```
+```{r}
+ggplot(pred_df, aes(x = Actual, y = Pred_LM)) +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 1) +
+  xlab("Actual Salary") + ylab("Predicted Salary") +
+  ggtitle("Linear Regression") +
+  xlim(0,2000) + ylim(0,2000)
+```
+
+
+

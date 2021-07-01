@@ -1,0 +1,191 @@
+---
+title: "Lecture 18: MNIST Data Set"
+author: "STAT 452, Spring 2021"
+output:
+  html_document:
+    df_print: paged
+---
+
+Here we go over an example of machine learning using the MNIST data set, which contains image information for a large collection of handwritten digits.  The machine learning task is to build an algorithm that predicts the digit based on features from the image.  We will use random forests, but other machine learning algorithms can also be considered (e.g., knn, neural nets).  
+
+This problem was originally presented to AT&T Bell Lab’s to help build automatic mail-sorting machines for the USPS.  The data set can be used build a machine learning algorithm that sorts mail based on a scan of the handwritten zip code on an envelope.  
+
+# Load Data Set
+
+```{r, message = FALSE}
+# load libraries
+library(tidyverse)
+library(ranger) # fast implementation of random forests
+library(dslabs) # contains mnist data set
+library(pryr)
+```
+
+First we must load the data set form the `dslabs` package.  The data set is over 200 MB in size, so this might take a few minutes to run.
+```{r, eval = FALSE}
+mnist <- read_mnist()
+```
+
+```{r}
+object_size(mnist)
+```
+
+The data set includes two components, a training set and test set:
+
+```{r}
+names(mnist)
+```
+
+The training set contains 60,000 images that are each standardized to 28x28 pixels.  Each row of the data frame corresponds to an image of a digit.  The are 784 columns (features), which represent  the gray-scale intensities of each pixel in the image (a number ranging from 0 to 255).  
+
+```{r}
+dim(mnist$train$images)
+```
+
+The training labels (actual digits 0, 1, ..., 9) are given in a separate vector: 
+```{r}
+head(mnist$train$labels) 
+table(mnist$train$labels)
+```
+
+The test set contains 10,000 images of digits, and has similar structure as the training set:
+
+```{r}
+dim(mnist$test$images)
+```
+
+```{r}
+head(mnist$test$labels) 
+table(mnist$test$labels)
+```
+
+
+# Look at Some Images
+
+Let's take a look at the first three images (rows) from the training set:
+
+```{r}
+mnist$train$labels[1]
+```
+
+```{r}
+m1 <- mnist$train$images[1,]
+image(matrix(m1, 28, 28)[, 28:1], 
+      col = gray.colors(12, rev = TRUE), xaxt="n", yaxt="n")
+```
+
+```{r}
+mnist$train$labels[2]
+```
+
+```{r}
+m2 <- mnist$train$images[2,]
+image(matrix(m2, 28, 28)[, 28:1], 
+      col = gray.colors(12, rev = TRUE), xaxt="n", yaxt="n")
+```
+
+```{r}
+mnist$train$labels[3]
+```
+
+
+```{r}
+m3 <- mnist$train$images[3,]
+image(matrix(m3, 28, 28)[, 28:1], 
+      col = gray.colors(12, rev = TRUE), xaxt="n", yaxt="n")
+```
+
+# Take Small Sample of Data Set
+
+Because we want this example to run on our laptops in a few minutes, we will consider a subset of the full data set. We will sample 10,000 random rows (images) from the training set and 1,000 random rows from the test set:
+
+```{r}
+set.seed(1990)
+index <- sample(nrow(mnist$train$images), 10000)
+x_train <- mnist$train$images[index, ]
+y_train <- factor(mnist$train$labels[index])
+mnist_train <- data.frame(y = y_train, x_train)
+
+index <- sample(nrow(mnist$test$images), 1000)
+x_test <- mnist$test$images[index,]
+y_test <- factor(mnist$test$labels[index])
+mnist_test <- data.frame(y = y_test, x_test)
+```
+
+# Random Forest Model
+
+Next, let's fit a random forest model using the training data.  The response variable is the actual digit labels (0, 1, 2, ...., 9).  The features are the 784 intensities of the pixels.   
+
+We'll use the `ranger()` function to implement random forests.  Supposedly, it provides a faster implementation of the random forest algorithm that the original `randomForest` package, which we have been using on smaller data sets. 
+
+For the tuning parameters, we'll use `num.trees = 200` and `mtry = 28` (since the $\sqrt{784} = 28$ is the suggested default).  
+
+```{r}
+start_time <- Sys.time() # keep track on computation time
+set.seed(999)
+rf1 <- ranger(y ~ ., data = mnist_train, 
+              num.trees = 200, mtry = 28)
+end_time <- Sys.time()
+end_time - start_time
+```
+
+
+```{r}
+rf1
+```
+Next we extract the confusion matrix, computed using the out-of-bag data.  
+```{r}
+rf1$confusion.matrix
+```
+The accuracy on the out-of-bag data can be found by summing the diagonal entries of confusion matrix (correct classifications) and dividing by 10000 (number of images in training set):
+```{r}
+# accuracy
+sum(diag(rf1$confusion.matrix)) / 10000
+```
+So the accuracy on the out-of-bag data is 95\%.  Not bad!
+
+The results on the out-of-bag data give a good sense of the accuracy of the random forest classifier.  To be careful, let's also see how well the model did on the withheld test set of 1000 digit images:
+
+```{r}
+p1 <- predict(rf1, mnist_test)
+# confusion matrix
+cm <- table(actual = mnist_test$y, predicted = p1$predictions)
+cm
+```
+
+```{r}
+# test set accuracy
+sum(diag(cm)) / 1000
+```
+
+The accuracy on the test set is also about 95\%!
+
+# Tuning
+
+We can try some other values of `mtry` to see if the accuracy of the model can be improved in any substantial way.
+
+```{r}
+start_time <- Sys.time() # keep track on computation time
+set.seed(999)
+mtry <- seq(5, 150, by = 15)
+errors <- c()
+for(i in 1:length(mtry)) {
+  m <- mtry[i]
+  rf1 <- ranger(y ~ ., data = mnist_train, 
+                num.trees = 200, mtry = m)
+  errors[i] <- rf1$prediction.error
+}
+end_time <- Sys.time()
+end_time - start_time
+```
+
+```{r}
+results <- data.frame(
+  accuracy = 1 - errors,
+  mtry = mtry
+)
+ggplot(results, aes(mtry, accuracy)) + geom_point()
+```
+
+It does not seem like adjusting `mtry` has much of an effect on the accuracy.  The default (`mtry = 28`) that we initially used seems sufficient.
+
+

@@ -1,0 +1,96 @@
+---
+title: "Cross-Validation for Regression"
+author: "STAT 452, Spring 2021"
+output: html_document
+---
+
+```{r, message = FALSE}
+library(tidyverse) # load tidyverse packages (ggplot2, dplyr, ...)
+library(AmesHousing) # load Ames housing data set
+ames <- make_ames()
+```
+
+```{r}
+# function to compute RMSE
+RMSE <- function(y, y_hat) {
+  sqrt(mean((y - y_hat)^2))
+}
+```
+
+Split `ames` data into a 70\% training and 30\% test set:
+
+```{r}
+set.seed(123)
+train_index <- sample(1:nrow(ames), round(nrow(ames) * 0.7))
+ames_train <- ames[train_index, ]
+ames_test <- ames[-train_index, ]
+```
+
+Fit regression models on training set: 
+
+```{r}
+lm1 <- lm(Sale_Price ~ Gr_Liv_Area, data = ames_train)
+lm2 <- lm(Sale_Price ~ Gr_Liv_Area + Year_Built, data = ames_train)
+```
+
+Make predictions on test set, and compute RMSE:
+
+```{r}
+pred1 <- predict(lm1, newdata = ames_test)
+pred2 <- predict(lm2, newdata = ames_test)
+```
+
+```{r}
+RMSE(ames_test$Sale_Price, pred1)
+RMSE(ames_test$Sale_Price, pred2)
+```
+
+We see that that second model has better performance since it has a substantially lower RMSE.  
+
+For the second model, the interpretation of the RMSE is that, when applied to withheld data, the predictions for `Sale_Price` are, on average, about \$45,444.77 off from the actual `Sale_Price`.  That is, the average error in predicting `Sale_Price` is about \$45,444.77.
+
+We can also compute the $R^2$ on the test set:
+
+```{r}
+# test R^2
+cor(ames_test$Sale_Price, pred1)^2
+cor(ames_test$Sale_Price, pred2)^2
+```
+
+Since the test set $R^2$ for the second model is higher (closer to 1) it performs better.  The interpretation is that about 67\% of the variability in `Sale_Price`, on the test set, is explained by predictions from the MLR model with `Gr_Liv_Area` and `Year_Built` as predictor variables. 
+
+On popular way to visually assess model performance is to make a plot of the predicted versus actual values.  The closer the points are to the 1-1 line, the better the model does at making predictions. 
+
+```{r}
+pred_df <- data.frame(
+  Actual = ames_test$Sale_Price / 1000, 
+  Pred1 = pred1 / 1000,
+  Pred2 = pred2 / 1000
+) 
+```
+
+```{r}
+ggplot(pred_df, aes(x=Actual, y=Pred1)) + 
+  geom_point(size=0.5, alpha = 0.5) +
+  geom_abline(intercept = 0, slope = 1) +
+  xlab("Actual Sale Price (in thousands)") +
+  ylab("Predicted Sale Price (in thousands)") +
+  ggtitle("Model 1") 
+```
+
+```{r}
+ggplot(pred_df, aes(x=Actual, y=Pred2)) + 
+  geom_point(size=0.5, alpha = 0.5) +
+  geom_abline(intercept = 0, slope = 1) +
+  xlab("Actual Sale Price (in thousands)") +
+  ylab("Predicted Sale Price (in thousands)") +
+  ggtitle("Model 2")
+```
+
+
+
+
+
+
+
+

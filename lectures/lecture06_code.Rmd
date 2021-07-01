@@ -1,0 +1,63 @@
+---
+title: 'Lecture 6: k-Fold Cross Validation'
+author: "STAT 452, Spring 2021"
+output: html_document
+---
+
+Here we go over some code for doing k-fold cross-validation using the `caret` package, which is one of the most popular packages for machine learning in R.
+
+**Important:** Make sure to set the the same seed before running k-fold CV for each model.  In this example, I use `set.seed(123)` before running `train()`, which is the function that performs the k-fold CV.  This ensures that random partitioning of the data into the k-folds is the same for each model.
+
+Reference:  Section 4.4 from [*Hands on Machine Learning*](https://bradleyboehmke.github.io/HOML/linear-regression.html#assessing-model-accuracy) 
+
+```{r, message = FALSE}
+library(tidyverse) # load tidyverse packages (ggplot2, dplyr, ...)
+library(AmesHousing) # load Ames housing data set
+library(caret) # package for machine learning
+ames <- make_ames()
+```
+
+```{r}
+set.seed(123) # for reproducibility
+cv_model1 <- train(
+  Sale_Price ~ Gr_Liv_Area,
+  data = ames,
+  method = "lm",
+  trControl = trainControl(method = "cv", number = 10)
+)
+```
+
+```{r}
+cv_model1
+```
+
+```{r}
+set.seed(123) # use same seed
+cv_model2 <- train(
+  Sale_Price ~ Gr_Liv_Area + Year_Built,
+  data = ames,
+  method = "lm",
+  trControl = trainControl(method = "cv", number = 10)
+)
+cv_model2
+```
+
+We see that that second model, which has 2 predictors, has better performance since it has a substantially lower RMSE.  
+
+Here's another way to display the k-fold CV results and compare the models: 
+```{r}
+summary(resamples(list(
+  model1 = cv_model1, 
+  model2 = cv_model2
+)))
+```
+We can also see the results for the performance metrics in each fold:
+
+```{r}
+cv_model1$resample
+```
+
+```{r}
+cv_model2$resample
+```
+

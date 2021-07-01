@@ -1,0 +1,256 @@
+---
+title: 'Lecture 19: Neural Networks'
+author: "STAT 452, Spring 2021"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+Here we go over two examples of fitting neural networks in R.  The first example involves a data set on concrete strength, and uses the `neuralnet` package.  The second example uses the MNIST data set and modern `keras` package.
+
+## Example: Concrete Compressive Strength Data Set
+
+For this example, we will utilize data on the compressive strength of concrete from the UCI machine learning repository.
+
+http://archive.ics.uci.edu/ml/datasets/concrete+compressive+strength
+
+Description of the data set provided on the website:
+"Concrete is the most important material in civil engineering. The 
+concrete compressive strength is a highly nonlinear function of age and 
+ingredients. These ingredients include cement, blast furnace slag, fly ash, 
+water, superplasticizer, coarse aggregate, and fine aggregate."
+
+Further background and details about this data set is provided in Chapter 7 from the Lantz textbook (posted on Blackboard in Resources folder).
+
+```{r, message = FALSE}
+# load packages
+library(tidyverse)
+library(neuralnet) 
+```
+
+```{r}
+# load data set
+concrete <- read.csv("concrete.csv")
+```
+
+```{r}
+glimpse(concrete)
+```
+
+### Prepare Data
+
+Neural networks work best when the input data are standardized to the same scale.  Here we'll use min-max standardization, which transforms a variable so the values are between 0 and 1.  Note that we also used this standardization method with KNN (lecture 11).
+
+```{r}
+# function to standardize numeric variables between 0 and 1
+standardize <- function(x) {
+  (x - min(x)) / (max(x) - min(x))
+}
+```
+
+We can use the `apply()` function to standardize the columns of the data frame:
+```{r}
+concrete_stdz <-  apply(concrete, 2, FUN = standardize)
+concrete_stdz <- as.data.frame(concrete_stdz)
+```
+
+Run the following command to check that this works:
+
+```{r, eval = F}
+summary(concrete_stdz)
+```
+
+Next we randomly split the data into a 70% training and 30% test set.
+
+```{r}
+set.seed(12345)
+n <- nrow(concrete_stdz)
+train_index <- sample(1:n, round(0.7*n))
+concrete_train <- concrete_stdz[train_index, ]
+concrete_test <- concrete_stdz[-train_index, ]
+```
+
+### Fit Neural Network Model
+
+Here we'll use the R package `neuralnet` to fit a neural network model.  The pacakges provides an easy-to-use implementation, and a function to plot the network topology.  
+
+Let's start with a NN with just 1 node in the hidden layer (perceptron), and a logistic activation function.  Note that, by default, the linear (idenity) activation function is used on the output later, which is what we want since this is a regression model.  There is some randomization involved in fitting a NN since the weights are initialized to random values, so we should set a random number seed before fitting the mode.
+
+```{r}
+set.seed(999)
+nn1 <- neuralnet(strength ~ ., data = concrete_train,
+                 hidden = 1, act.fct = "logistic")
+```
+
+```{r}
+plot(nn1, cex = 0.75)
+```
+The plot shows numeric values for the weights that connect the nodes, along with the bias terms (in blue) for the fitted NN.  (Note that this plot did not compile when I knitted the R Markdown file, so you'll have to run this command in RStudio if you want to see the network plot.)
+
+Next, let's try fitting a NN with 3 nodes in the hidden layer, and a logistic activation function.  
+
+```{r}
+set.seed(999)
+nn2 <- neuralnet(strength ~ ., data = concrete_train,
+                 hidden = 3, act.fct = "logistic")
+```
+
+```{r}
+plot(nn2, cex = 0.75)
+```
+
+### Evaluate Performance
+
+Next let's evaluate the performance of the NN models by computing the RMSE and $R^2$ on the test set.
+
+```{r}
+# function to compute RMSE
+RMSE <- function(y, y_hat) {
+  sqrt(mean((y - y_hat)^2))
+}
+```
+
+```{r}
+pred_nn1 <- predict(nn1, newdata= concrete_test)
+pred_nn2 <- predict(nn2, newdata= concrete_test)
+```
+
+```{r}
+RMSE(concrete_test$strength, pred_nn1)
+RMSE(concrete_test$strength, pred_nn2)
+```
+
+```{r}
+cor(concrete_test$strength, pred_nn1)^2
+cor(concrete_test$strength, pred_nn2)^2
+```
+
+We see that the NN model with 3 nodes in the hidden layer has the better performance.
+
+As a sanity-check, let's also compare the results to a linear regression model:
+```{r}
+lm1 <- lm(strength ~ ., data = concrete_train)
+pred_lm1 <- predict(lm1, newdata = concrete_test)
+RMSE(concrete_test$strength, pred_lm1)
+cor(concrete_test$strength, pred_lm1)^2
+```
+
+For the linear regression model the $R^2$ is about 60\%, which is similar to the NN with one node in the hidden layer.  However, the NN with 3 nodes in the hidden layer has substantially better performance ($R^2 \approx 83\%$).
+
+## Example: MNIST Data set
+
+Next, we'll look at an example of training a neural network using the MNIST data set (recognition of handwritten digits; see lecture 18 code for details).  We'll use the `keras` package to train the neural network. 
+
+Note that the code and some of writing here borrows directly from these references:
+
+https://bradleyboehmke.github.io/HOML/deep-learning.html#dl-train
+
+https://tensorflow.rstudio.com/guide/keras/
+
+### Prepare Data
+
+We can load the MNIST data set directly from the `keras` package. 
+
+```{r}
+library(keras)
+mnist <- dataset_mnist()
+x_train <- mnist$train$x
+y_train <- mnist$train$y
+x_test <- mnist$test$x
+y_test <- mnist$test$y
+```
+
+The data needs to be prepared in a very specific way to fit a NN with the `keras` package.  
+
+The `x` data is a 3-d array (images,width,height) of grayscale values . To prepare the data for training we convert the 3-d arrays into matrices by reshaping width and height into a single dimension (28x28 images are flattened into length 784 vectors). Then, we convert the grayscale values from integers ranging between 0 to 255 into floating point values ranging between 0 and 1:
+
+```{r}
+# reshape
+x_train <- array_reshape(x_train, c(nrow(x_train), 784))
+x_test <- array_reshape(x_test, c(nrow(x_test), 784))
+# rescale
+x_train <- x_train / 255
+x_test <- x_test / 255
+```
+
+The `y` data is an integer vector with values ranging from 0 to 9.  To prepare this data for training we one-hot encode the vectors into binary class matrices using the `to_categorical()` function:
+
+```{r}
+y_train <- to_categorical(y_train, 10)
+y_test <- to_categorical(y_test, 10)
+```
+
+### Define the Model
+
+Here we fit a neural network with 2 hidden layers, with 128 and 64 nodes, respectively.  The hidden layers use ReLU activation functions.  The output layer has 10 nodes and uses the sofmax activation function (since MNIST is a classification problem with 10 categories that we are trying to predict, 0--9).   
+
+```{r}
+# Network architecture
+model <- keras_model_sequential() %>%
+  layer_dense(units = 128, activation = "relu", input_shape = ncol(x_train)) %>%
+  layer_dense(units = 64, activation = "relu") %>%
+  layer_dense(units = 10, activation = "softmax")
+```
+
+Next we use `compile()` to set up the backpropagation algorithm used to fit the NN. This includes specifying a loss function, optimizer, and one or more classification metrics to track. 
+
+```{r}
+# Backpropagation
+model %>% compile(
+  loss = 'categorical_crossentropy',
+  optimizer = optimizer_rmsprop(),
+  metrics = c('accuracy')
+)
+```
+
+We can use `summary()` to inspect the NN model's architecture. With the 2 hidden layers, we see that there are 109,386 parameters, or weights, that need to be estimated.
+
+```{r}
+summary(model)
+```
+
+### Training and Evaluation
+
+Use the fit() function to train the model for 25 epochs using batches of 128 images.  A description of the arguments can be found [here](https://bradleyboehmke.github.io/HOML/deep-learning.html#dl-train).  
+
+```{r}
+start_time <- Sys.time() # keep track on computation time
+set.seed(999) # for reproducibility
+# Train the model
+fit1 <- model %>%
+  fit(
+    x = x_train,
+    y = y_train,
+    epochs = 25,
+    batch_size = 128,
+    validation_split = 0.2,
+    verbose = FALSE
+  )
+end_time <- Sys.time()
+end_time - start_time
+```
+
+```{r}
+# Display output
+fit1
+```
+Plotting the output shows how our loss function, and specified metrics, improve for each epoch. We see that our model’s performance is optimized at 5–10 epochs.
+
+```{r, message = FALSE}
+plot(fit1)
+```
+
+Next we compute the accuracy and confusion matrix on the test set of 10,000 images.  The accuracy is 98%, which I suppose is better than random forests.  We're also using the entire training set (60,000 images) to fit the NN, which was surprisingly fast (run time was less than a minute on my machine).
+
+```{r}
+model %>% evaluate(x_test, y_test, verbose = FALSE)
+```
+
+```{r}
+# confusion matrix
+pred <- model %>% predict_classes(x_test)
+cm <- table(predicted = pred, actual = mnist$test$y)
+cm
+```
+
+

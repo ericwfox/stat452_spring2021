@@ -1,0 +1,126 @@
+---
+title: "Lecture 13: Lasso and Ridge Regression"
+output: html_document
+---
+
+We will use the `glmnet` package to perform ridge regression and the lasso using the `Hitters` data. The main functions we will use from this package are `glmnet()` and `cv.glmnet()`.  The main reference for this tutorial is the Glmnet Vignette:
+
+https://web.stanford.edu/~hastie/glmnet/glmnet_alpha.html
+
+Before fitting a ridge regression or lasso model, we must create a matrix with the predictors, and a response vector.  The data must be formatted this way for the `glmnet()` and `cv.glmnet()` functions.  The `model.matrix()` function is particularly useful since it produces a matrix object for the predictors, and automatically transforms any categorical variables into dummy variables.
+
+```{r, message=F}
+library(glmnet)
+library(ISLR)
+Hitters2 <- na.omit(Hitters) # remove missing data
+x <- model.matrix(Salary ~ ., data=Hitters2)[, -1]
+y <- Hitters2$Salary
+```
+
+# Ridge Regression
+The `glmnet()` function is useful for visualizing the coefficient path over a range of $\lambda$ values. The argument `alpha` determines what type of model to fit; `alpha=0` specifies ridge regression, and `alpha=1` specifies the lasso.  We first fit a ridge regression model.
+
+```{r}
+ridge <- glmnet(x, y, alpha=0)
+plot(ridge, xvar = "lambda")
+```
+
+The function `cv.glmnet()` can be used to select the value of the tuning parameter $\lambda$.  Internally, the function uses cross-validation to accomplish this.  Here we select that value of $\lambda$ that results in the minimum cross-validation error.  Since cross-validation is used, we need to a set a `seed` for reproducibility. 
+```{r}
+set.seed(9)
+ridge_cv <- cv.glmnet(x, y, alpha=0)
+ridge_cv$lambda.min # selected lambda value
+plot(ridge, xvar = "lambda")
+abline(v=log(ridge_cv$lambda.min))
+```
+
+Next, we extract the ridge regression coefficients corresponding to the selected $\lambda$ value.
+```{r}
+coef(ridge_cv, s="lambda.min")
+```
+Notice that all the estimated coefficients are nonzero.  This is expected since ridge regression only shrinks the coefficients towards zero, and does not set them equal to zero.
+
+# LASSO
+
+We set `alpha=1` to fit the lasso model:
+
+```{r}
+lasso <- glmnet(x, y, alpha=1)
+plot(lasso, xvar = "lambda")
+```
+
+The top axis indicates the number of nonzero coefficients as we adjust $\lambda$.
+
+We use `cv.glmnet()` to select the value of the tuning parameter $\lambda$, which minimizes the cross-validation error.
+
+```{r}
+set.seed(9)
+lasso_cv <- cv.glmnet(x, y, alpha=1)
+lasso_cv$lambda.min # selected lambda value
+plot(lasso, xvar = "lambda")
+abline(v=log(lasso_cv$lambda.min))
+```
+
+Next, we extract the lasso coefficients corresponding to the selected $\lambda$ value.
+
+```{r}
+coef(lasso_cv, s="lambda.min")
+```
+
+Notice that some of the estimated coefficients are exactly zero (indicated by the dot).
+
+## Cross Validation 
+
+Next we use cross-validation (hold-out method) to compare the following 4 models: multiple linear regression (MLR) with all the variables, MLR with backwards stepwise selection, ridge regression, and the lasso. 
+
+#### Split data into 70% training and 30\% test sets
+
+```{r}
+set.seed(123)
+n <- nrow(x)
+train_index <- sample(1:n, round(n * 0.7))
+y_train <- y[train_index] 
+y_test <- y[-train_index] 
+x_train <- x[train_index, ]
+x_test <-  x[-train_index, ]
+```
+
+#### Estimate models on training set
+```{r}
+# fit MLR model on training set
+lm_fit <- lm(Salary ~ ., data=Hitters2, subset=train_index)
+# fit MLR model with stepwise selection on training set
+lm_step_fit <- step(lm_fit, trace=F)
+# fit ridge model on training set
+ridge_fit <- cv.glmnet(x_train, y_train, alpha=0)
+# fit lasso model on training set
+lasso_fit <- cv.glmnet(x_train, y_train, alpha=1)
+```
+
+#### Make predictions on test set and compute RMSE
+```{r}
+# function to compute RMSE
+RMSE <- function(y, y_hat) {
+  sqrt(mean((y - y_hat)^2))
+}
+
+# MLR 
+lm_pred <- predict(lm_fit, newdata = Hitters2[-train_index, ])
+RMSE(y_test, lm_pred)
+
+# MLR with stepwise selection
+lm_step_pred <- predict(lm_step_fit, newdata = Hitters2[-train_index, ])
+RMSE(y_test, lm_step_pred)
+
+# ridge
+ridge_pred <- predict(ridge_fit, newx = x_test, s = "lambda.min")
+ridge_pred <- as.numeric(ridge_pred)
+RMSE(y_test, ridge_pred)
+
+# lasso
+lasso_pred <- predict(lasso_fit, newx = x_test, s = "lambda.min")
+lasso_pred <- as.numeric(lasso_pred)
+RMSE(y_test, lasso_pred)
+```
+
+The RMSE values are all close.  The ridge regression model has the the lowest RMSE.  The lasso and stepwise regression models have a slightly higher RMSE, but use less variables than ridge regression.  The MLR with the full set of variables has the highest RMSE.
